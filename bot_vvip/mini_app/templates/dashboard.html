@@ -135,7 +135,8 @@
                 });
 
                 // Fetch users for the table
-                const usersResponse = await fetch('/api/users');
+                const usersResponse = await fetch('/api/users', { headers });
+                if (!usersResponse.ok) throw new Error(`HTTP error! status: ${usersResponse.status}`);
                 const users = await usersResponse.json();
                 const userTableBody = document.getElementById('user-table-body');
                 userTableBody.innerHTML = ''; // Clear existing rows

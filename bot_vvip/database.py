@@ -9,7 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_FILE = "bot_vvip/database.db"
+DB_FILE = "database.db"
 
 def create_connection():
     """Create a database connection to the SQLite database."""

@@ -10,8 +10,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = "bot_vvip/database.db"
-BACKUP_DIR = "bot_vvip/backups"
+DB_PATH = "database.db"
+BACKUP_DIR = "backups"
 
 def create_backup():
     """Creates a zip archive of the database file."""

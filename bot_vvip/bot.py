@@ -300,11 +300,45 @@ async def show_cart(update: Update, context: CallbackContext, is_edit: bool = Fa
     price_per_month = int(database.get_setting('price') or 10000)
     total_price = price_per_month * months
 
-    # In a real scenario, calculate the end date based on current subscription
-    end_date = "N/A"
+    from datetime import datetime, timedelta
+    user_id = update.effective_user.id
+    user_data = database.get_or_create_user(user_id, "", "")
+
+    start_date = datetime.now()
+    if user_data and user_data['vip_status'] == 'active' and user_data['vip_end_date']:
+        start_date = datetime.fromisoformat(user_data['vip_end_date'])
+
+    end_date = start_date + timedelta(days=30 * months)
+    end_date_str = end_date.strftime('%d %B %Y')
 
     text = (
         "🛒 *Keranjang Belanja*\n\n"
+        f"💎 VVIP Channel: {months} Bulan\n"
+        f"🗓️ VVIP Anda akan berakhir pada: *{end_date_str}*\n\n"
+        f"💰 *Total Harga: Rp. {total_price:,}*"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("-", callback_data='remove_month'),
+            InlineKeyboardButton(f"⏰ {months} Bulan", callback_data='noop'), # No operation
+            InlineKeyboardButton("+", callback_data='add_month')
+        ],
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data='cancel_purchase'),
+            InlineKeyboardButton("✅ Lanjutkan", callback_data='proceed_payment')
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if is_edit:
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
+async def proceed_to_payment(update: Update, context: CallbackContext) -> None:
+    """Handles the payment process."""
+    qris_url = database.get_setting('qris_url')
         f"💎 VVIP Channel: {months} Bulan\n"
         f"🗓️ VVIP Anda akan berakhir pada: {end_date}\n\n"
         f"💰 *Total Harga: Rp. {total_price:,}*"

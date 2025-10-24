@@ -1,0 +1,15 @@
+[Unit]
+Description=VVIP Bot Mini App (Flask)
+After=network.target
+
+[Service]
+# Ganti User, Group, WorkingDirectory, dan ExecStart sesuai dengan path dan user di VPS Anda
+User=root
+Group=root
+WorkingDirectory=/root/bot_vvip
+ExecStart=/root/bot_vvip/venv/bin/python3 mini_app/app.py
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
