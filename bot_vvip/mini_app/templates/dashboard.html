@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VVIP Bot Dashboard</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 1200px; margin: auto; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #555; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .tabs { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 20px; }
+        .tab-link { padding: 10px 20px; cursor: pointer; border: none; background: none; font-size: 16px; }
+        .tab-link.active { border-bottom: 2px solid #007bff; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 VVIP Bot Dashboard</h1>
+
+        <div class="tabs">
+            <button class="tab-link active" onclick="openTab(event, 'stats')">Statistik</button>
+            <button class="tab-link" onclick="openTab(event, 'users')">Manajemen User</button>
+            <button class="tab-link" onclick="openTab(event, 'settings')">Pengaturan</button>
+        </div>
+
+        <div id="stats" class="tab-content active">
+            <h2>Statistik Utama</h2>
+            <div class="grid">
+                <div class="card"><h3>Total Users</h3><p id="total-users">0</p></div>
+                <div class="card"><h3>VIP Aktif</h3><p id="vip-active">0</p></div>
+                <div class="card"><h3>VIP Expired</h3><p id="vip-expired">0</p></div>
+                <div class="card"><h3>Pending Approval</h3><p id="pending-approval">0</p></div>
+            </div>
+            <div class="grid" style="margin-top: 20px;">
+                <div class="card">
+                    <h2>Pendaftaran User (7 Hari Terakhir)</h2>
+                    <canvas id="user-chart"></canvas>
+                </div>
+                <div class="card">
+                    <h2>Status User</h2>
+                    <canvas id="status-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="users" class="tab-content">
+            <h2>Daftar User VIP</h2>
+            <input type="text" id="search-user" placeholder="Cari user..." style="width: 100%; padding: 10px; margin-bottom: 20px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nama</th>
+                        <th>Username</th>
+                        <th>Mulai</th>
+                        <th>Expired</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="user-table-body">
+                    <!-- User data will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="settings" class="tab-content">
+            <h2>Pengaturan Bot</h2>
+            <!-- Settings form will be here -->
+        </div>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tab-link");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+
+        async function fetchData() {
+            try {
+                const headers = {
+                    'X-Telegram-Init-Data': window.Telegram.WebApp.initData
+                };
+
+                // Fetch stats
+                const statsResponse = await fetch('/api/stats', { headers });
+                if (!statsResponse.ok) throw new Error(`HTTP error! status: ${statsResponse.status}`);
+                const stats = await statsResponse.json();
+                document.getElementById('total-users').textContent = stats.total_users;
+                document.getElementById('vip-active').textContent = stats.vip_active;
+                document.getElementById('vip-expired').textContent = stats.vip_expired;
+                document.getElementById('pending-approval').textContent = stats.pending_approval;
+
+                // User Chart
+                new Chart(document.getElementById('user-chart'), {
+                    type: 'line',
+                    data: {
+                        labels: stats.user_chart.labels,
+                        datasets: [{
+                            label: 'New Users',
+                            data: stats.user_chart.data,
+                            borderColor: '#007bff',
+                            tension: 0.1
+                        }]
+                    }
+                });
+
+                // Status Chart
+                new Chart(document.getElementById('status-chart'), {
+                    type: 'pie',
+                    data: {
+                        labels: stats.status_chart.labels,
+                        datasets: [{
+                            data: stats.status_chart.data,
+                            backgroundColor: ['#28a745', '#dc3545', '#ffc107']
+                        }]
+                    }
+                });
+
+                // Fetch users for the table
+                const usersResponse = await fetch('/api/users');
+                const users = await usersResponse.json();
+                const userTableBody = document.getElementById('user-table-body');
+                userTableBody.innerHTML = ''; // Clear existing rows
+                users.forEach(user => {
+                    const row = `<tr>
+                        <td>${user.user_id}</td>
+                        <td>${user.full_name}</td>
+                        <td>${user.username || 'N/A'}</td>
+                        <td>${user.vip_start_date || 'N/A'}</td>
+                        <td>${user.vip_end_date || 'N/A'}</td>
+                        <td>${user.vip_status}</td>
+                    </tr>`;
+                    userTableBody.innerHTML += row;
+                });
+
+            } catch (error) {
+                console.error('Failed to fetch data:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchData);
+    </script>
+</body>
+</html>
