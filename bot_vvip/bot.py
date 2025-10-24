@@ -177,16 +177,82 @@ async def vvip_command(update: Update, context: CallbackContext) -> None:
             await update.message.reply_text("Saat ini belum ada channel VVIP yang tersedia.")
     else:
         await update.message.reply_text("Langganan Anda telah berakhir. Silahkan perpanjang langganan Anda.")
+
+async def extend_vip(update: Update, context: CallbackContext) -> None:
+    """Extends a user's VIP subscription."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    await _modify_vip_duration(update, context, "extend")
+
+async def reduce_vip(update: Update, context: CallbackContext) -> None:
+    """Reduces a user's VIP subscription."""
+    if update.effective_user.id != OWNER_ID:
+        return
+    await _modify_vip_duration(update, context, "reduce")
+
+async def _modify_vip_duration(update: Update, context: CallbackContext, action: str) -> None:
+    """Helper function to extend or reduce VIP duration."""
+    from datetime import datetime, timedelta
+
+    args = context.args
+    if len(args) != 2:
+        await update.message.reply_text(f"Format salah. Gunakan: /{action} <user_id|@username> <jumlah_hari>")
         return
 
-    mini_app_url = os.getenv("MINI_APP_URL")
-    if not mini_app_url:
-        await update.message.reply_text("URL Mini App tidak diatur.")
+    user_identifier, days_str = args
+    try:
+        days = int(days_str)
+        if days <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("Jumlah hari harus berupa angka positif.")
         return
 
-    keyboard = [[InlineKeyboardButton("Buka Dashboard", web_app={"url": f"{mini_app_url}/dashboard"})]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Klik tombol di bawah untuk membuka dashboard Mini App:", reply_markup=reply_markup)
+    user_data = database.get_user_by_id_or_username(user_identifier)
+
+    if not user_data:
+        await update.message.reply_text(f"User '{user_identifier}' tidak ditemukan.")
+        return
+
+    if user_data['vip_status'] != 'active' or not user_data['vip_end_date']:
+        await update.message.reply_text(f"User '{user_identifier}' tidak memiliki langganan VVIP aktif.")
+        return
+
+    try:
+        current_end_date = datetime.fromisoformat(user_data['vip_end_date'])
+
+        if action == "extend":
+            new_end_date = current_end_date + timedelta(days=days)
+            operation_text = "diperpanjang"
+        else: # reduce
+            new_end_date = current_end_date - timedelta(days=days)
+            operation_text = "dikurangi"
+
+        success = database.update_vip_end_date(user_data['user_id'], new_end_date.isoformat())
+
+        if success:
+            new_end_date_str = new_end_date.strftime('%d %B %Y')
+            # Notify owner
+            await update.message.reply_text(
+                f"✅ Berhasil! Masa aktif VVIP untuk {user_data['full_name']} ({user_data['user_id']}) "
+                f"telah {operation_text} selama {days} hari.\n"
+                f"Tanggal kedaluwarsa baru: *{new_end_date_str}*",
+                parse_mode='Markdown'
+            )
+            # Notify user
+            await context.bot.send_message(
+                chat_id=user_data['user_id'],
+                text=f"Halo {user_data['full_name']},\n"
+                     f"Masa aktif VVIP Anda telah {operation_text} selama {days} hari oleh owner.\n"
+                     f"Langganan Anda sekarang akan berakhir pada *{new_end_date_str}*.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text("Gagal memperbarui database.")
+
+    except Exception as e:
+        logger.error(f"Error modifying VIP duration for {user_identifier}: {e}")
+        await update.message.reply_text(f"Terjadi kesalahan: {e}")
 
 # --- Callback Query Handler ---
 async def button_handler(update: Update, context: CallbackContext) -> None:
@@ -246,6 +312,13 @@ async def handle_approval(update: Update, context: CallbackContext, payment_id: 
     # We will need to get the list of VVIP channels to show the buttons
     channels = database.get_active_channels()
     if channels:
+        # Unban user from all channels before creating new links
+        for channel in channels:
+            try:
+                await context.bot.unban_chat_member(chat_id=channel['channel_id'], user_id=user_id, only_if_banned=True)
+            except Exception as e:
+                logger.error(f"Failed to unban {user_id} from {channel['channel_id']}: {e}")
+
         keyboard = []
         for channel in channels:
             try:
@@ -315,32 +388,6 @@ async def show_cart(update: Update, context: CallbackContext, is_edit: bool = Fa
         "🛒 *Keranjang Belanja*\n\n"
         f"💎 VVIP Channel: {months} Bulan\n"
         f"🗓️ VVIP Anda akan berakhir pada: *{end_date_str}*\n\n"
-        f"💰 *Total Harga: Rp. {total_price:,}*"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton("-", callback_data='remove_month'),
-            InlineKeyboardButton(f"⏰ {months} Bulan", callback_data='noop'), # No operation
-            InlineKeyboardButton("+", callback_data='add_month')
-        ],
-        [
-            InlineKeyboardButton("❌ Batalkan", callback_data='cancel_purchase'),
-            InlineKeyboardButton("✅ Lanjutkan", callback_data='proceed_payment')
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    if is_edit:
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-    else:
-        await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-
-async def proceed_to_payment(update: Update, context: CallbackContext) -> None:
-    """Handles the payment process."""
-    qris_url = database.get_setting('qris_url')
-        f"💎 VVIP Channel: {months} Bulan\n"
-        f"🗓️ VVIP Anda akan berakhir pada: {end_date}\n\n"
         f"💰 *Total Harga: Rp. {total_price:,}*"
     )
 
@@ -446,12 +493,23 @@ async def check_expired_users(context: CallbackContext) -> None:
         for channel in channels:
             try:
                 await context.bot.ban_chat_member(chat_id=channel['channel_id'], user_id=user_id)
-                # Unbanning immediately allows them to rejoin if they renew
-                await context.bot.unban_chat_member(chat_id=channel['channel_id'], user_id=user_id)
             except Exception as e:
                 logger.error(f"Failed to kick {user_id} from {channel['channel_id']}: {e}")
 
         database.update_user_vip_status(user_id, 'expired')
+
+async def send_expiry_notifications(context: CallbackContext) -> None:
+    """Sends notifications to users whose VIP is about to expire."""
+    for days_left in [5, 4, 3, 2, 1]:
+        users = database.get_users_nearing_expiry(days_left)
+        for user in users:
+            user_id = user['user_id']
+            message = f"Langganan VVIP Anda akan berakhir dalam {days_left} hari. Silahkan perpanjang segera!"
+            try:
+                await context.bot.send_message(chat_id=user_id, text=message)
+                logger.info(f"Sent expiry notification to {user_id} ({days_left} days left).")
+            except Exception as e:
+                logger.error(f"Failed to send expiry notification to {user_id}: {e}")
 
 async def backup_command(update: Update, context: CallbackContext) -> None:
     """Performs a manual backup of the database."""
@@ -497,6 +555,7 @@ def main() -> None:
     # Add job queue for automatic tasks
     job_queue = application.job_queue
     job_queue.run_daily(check_expired_users, time=time(hour=0, minute=0)) # Run daily at midnight
+    job_queue.run_daily(send_expiry_notifications, time=time(hour=9, minute=0)) # Run daily at 9 AM
     job_queue.run_repeating(auto_backup_job, interval=60*60*6, first=10) # Run every 6 hours
 
     # on different commands - answer in Telegram
@@ -511,6 +570,8 @@ def main() -> None:
     application.add_handler(CommandHandler("setbantuanurl", setbantuanurl))
     application.add_handler(CommandHandler("dashboard", dashboard_command))
     application.add_handler(CommandHandler("vvip", vvip_command))
+    application.add_handler(CommandHandler("extend", extend_vip))
+    application.add_handler(CommandHandler("reduce", reduce_vip))
 
     # Add handler for inline button clicks
     application.add_handler(CallbackQueryHandler(button_handler))

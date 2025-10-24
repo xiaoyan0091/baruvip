@@ -345,5 +345,72 @@ def add_backup_record(file_size: int, file_path: str, backup_type: str):
         finally:
             conn.close()
 
+def get_user_by_id_or_username(identifier):
+    """Retrieves a user by their user_id or username."""
+    conn = create_connection()
+    user = None
+    if conn:
+        try:
+            c = conn.cursor()
+            sql_query = "SELECT * FROM users WHERE "
+            params = ()
+
+            if identifier.startswith('@'):
+                sql_query += "username = ?"
+                params = (identifier[1:],)
+            elif identifier.isdigit():
+                sql_query += "user_id = ?"
+                params = (int(identifier),)
+            else:
+                return None # Invalid identifier
+
+            c.execute(sql_query, params)
+            user = c.fetchone()
+        except Error as e:
+            logger.error(f"Database error in get_user_by_id_or_username: {e}")
+        finally:
+            conn.close()
+    return user
+
+def update_vip_end_date(user_id: int, new_end_date: str):
+    """Updates the vip_end_date for a specific user."""
+    conn = create_connection()
+    if conn:
+        try:
+            c = conn.cursor()
+            c.execute("UPDATE users SET vip_end_date = ? WHERE user_id = ?", (new_end_date, user_id))
+            conn.commit()
+            return True
+        except Error as e:
+            logger.error(f"Database error in update_vip_end_date: {e}")
+            return False
+        finally:
+            conn.close()
+    return False
+
+def get_users_nearing_expiry(days_left: int):
+    """Retrieves users whose VIP subscription is expiring in exactly `days_left` days."""
+    conn = create_connection()
+    users = []
+    if conn:
+        try:
+            from datetime import datetime, date, timedelta
+
+            target_date = date.today() + timedelta(days=days_left)
+            target_date_str = target_date.strftime('%Y-%m-%d')
+
+            c = conn.cursor()
+            # We use date() to compare only the date part of the timestamp
+            c.execute(
+                "SELECT user_id, full_name FROM users WHERE vip_status = 'active' AND date(vip_end_date) = ?",
+                (target_date_str,)
+            )
+            users = c.fetchall()
+        except Error as e:
+            logger.error(f"Database error in get_users_nearing_expiry: {e}")
+        finally:
+            conn.close()
+    return users
+
 # Initialize the database on module load
 setup_database()

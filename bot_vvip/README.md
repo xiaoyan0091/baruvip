@@ -94,6 +94,8 @@ bot_vvip/
 -   `/dashboard` - Buka Mini Apps Dashboard.
 -   `/backup` - Backup manual database.
 -   `/restore` - Restore database (reply file .zip backup).
+-   `/extend <user_id|@username> <days>` - Perpanjang masa aktif VVIP user.
+-   `/reduce <user_id|@username> <days>` - Kurangi masa aktif VVIP user.
 
 ## ☁️ Deploy ke VPS (Ubuntu dengan systemd)
 
